@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+  <meta charset="UTF-8">
+  <title>نقشه نمایش مکان‌های عمومی از OSM</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+  <style>
+    #map { height: 100vh; }
+    .legend {
+      background: white;
+      padding: 10px;
+      font-size: 14px;
+      line-height: 24px;
+      border-radius: 5px;
+    }
+    .legend i {
+      width: 20px;
+      height: 20px;
+      float: right;
+      margin-left: 8px;
+      opacity: 0.8;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+  <script>
+    const map = L.map('map').setView([35.6892, 51.3890], 12);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    function getColor(type) {
+      switch (type) {
+        case 'fire_station': return 'orange';
+        case 'school': return 'blue';
+        case 'telecom': return 'green';
+        case 'bus_stop': return 'purple';
+        case 'station': return 'darkred';
+        default: return 'gray';
+      }
+    }
+
+    const layers = {};
+    const types = ['fire_station', 'school', 'telecom', 'bus_stop', 'station'];
+    types.forEach(t => {
+      layers[t] = L.layerGroup().addTo(map);
+    });
+
+    // Overpass API query
+    const query = `
+      [out:json][timeout:25];
+      area["name"="تهران"]["boundary"="administrative"]->.a;
+      (
+        node["amenity"="fire_station"](area.a);
+        node["amenity"="school"](area.a);
+        node["man_made"="mast"](area.a); // telecom
+        node["highway"="bus_stop"](area.a);
+        node["railway"="station"](area.a);
+      );
+      out body;
+    `;
+
+    fetch('https://overpass-api.de/api/interpreter', {
+      method: 'POST',
+      body: query
+    })
+    .then(res => res.json())
+    .then(data => {
+      data.elements.forEach(el => {
+        const lat = el.lat, lon = el.lon;
+        let type = el.tags.amenity || el.tags.highway || el.tags.railway || el.tags.man_made;
+        if (type === 'mast') type = 'telecom';
+        if (!layers[type]) return;
+        const name = el.tags.name || 'بدون نام';
+        L.circleMarker([lat, lon], {
+          radius: 6,
+          fillColor: getColor(type),
+          color: '#000',
+          weight: 1,
+          fillOpacity: 0.8
+        })
+        .bindPopup(`<b>${name}</b><br>${type}`)
+        .addTo(layers[type]);
+      });
+
+      L.control.layers(null, layers, { collapsed: false }).addTo(map);
+
+      const legend = L.control({ position: 'bottomright' });
+      legend.onAdd = () => {
+        const div = L.DomUtil.create('div', 'legend');
+        types.forEach(t => {
+          div.innerHTML += `<i style="background:${getColor(t)}"></i>${t}<br>`;
+        });
+        return div;
+      };
+      legend.addTo(map);
+    });
+
+    map.whenReady(() => {
+      console.log('نقشه با موفقیت از OSM بارگذاری شد.');
+    });
+  </script>
+</body>
+</html>
